@@ -29,7 +29,15 @@ create policy "movies update" on public.movies for update to anon using (true) w
 create policy "movies delete" on public.movies for delete to anon using (true);
 
 -- 3. 他の人の投稿がすぐ画面に反映されるようにする
-alter publication supabase_realtime add table public.movies;
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'movies'
+  ) then
+    alter publication supabase_realtime add table public.movies;
+  end if;
+end $$;
 
 -- 4. ポスター画像の置き場所（公開バケット、1枚5MBまで、画像のみ）
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
