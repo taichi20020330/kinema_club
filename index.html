@@ -85,6 +85,7 @@ h1 span{display:inline-block}
 .item.watched .pic::after{content:"上映終了";position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) rotate(-10deg);
   font-family:var(--f-sign);font-size:18px;color:#fff3d6;border:2px solid #fff3d6;padding:0 8px;letter-spacing:.1em;white-space:nowrap;background:var(--ink);z-index:1}
 .t{font-family:var(--f-sign);font-size:15px;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word}
+.dir{font-size:13px;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:-4px}
 .by{font-size:12px;color:var(--sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
 .empty{text-align:center;color:var(--sub);padding:40px 0;font-size:14px}
@@ -150,10 +151,13 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,.drop:focus-visi
     <button class="close" type="button" data-close aria-label="閉じる">×</button>
     <h2>上映リクエスト</h2>
     <label for="fName">あなたの名前
-      <input type="text" id="fName" maxlength="20" placeholder="例：中村" autocomplete="nickname">
+      <input type="text" id="fName" maxlength="20" autocomplete="nickname">
     </label>
     <label for="fTitle">タイトル
       <input type="text" id="fTitle" maxlength="80" placeholder="例：東京物語">
+    </label>
+    <label for="fDir">監督・作者 <small>任意</small>
+      <input type="text" id="fDir" maxlength="60">
     </label>
     <label for="fNote">一言 <small>任意</small>
       <textarea id="fNote" maxlength="300" placeholder="どこがみたいか、どこで観られるか など"></textarea>
@@ -181,7 +185,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,.drop:focus-visi
     <button class="close" type="button" data-close aria-label="閉じる">×</button>
     <h2>あなたの名前</h2>
     <label for="nName">みんなに表示されます
-      <input type="text" id="nName" maxlength="20" placeholder="例：中村" autocomplete="nickname">
+      <input type="text" id="nName" maxlength="20" autocomplete="nickname">
     </label>
     <p class="err" id="nameErr" hidden></p>
     <div class="row"><button class="btn" type="submit">決定</button></div>
@@ -208,6 +212,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,.drop:focus-visi
   const esc = s => { const d = document.createElement("div"); d.textContent = s == null ? "" : String(s); return d.innerHTML; };
   const imgSrc = m => m.image_path ? `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${encodeURIComponent(m.image_path)}` : "";
   const searchUrl = t => "https://www.google.com/search?tbm=isch&q=" + encodeURIComponent(t + " 映画 ポスター");
+  const dirOf = m => (m.year || "").trim();
   const votesOf = m => (m.votes && typeof m.votes === "object") ? m.votes : {};
   const voteCount = m => Object.keys(votesOf(m)).length;
   const ts = m => m.created_at ? Date.parse(m.created_at) : 0;
@@ -262,9 +267,10 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,.drop:focus-visi
         pic.appendChild(img);
       } else pic.appendChild(noimg());
       const t = document.createElement("div"); t.className = "t"; t.textContent = m.title;
+      const dir = document.createElement("div"); dir.className = "dir"; dir.textContent = dirOf(m); dir.hidden = !dirOf(m);
       const by = document.createElement("div"); by.className = "by";
       by.textContent = [m.by_name, n ? `みたい ${n}` : "", m.watched ? "観た" : ""].filter(Boolean).join("・");
-      b.append(pic, t, by);
+      b.append(pic, t, dir, by);
       b.addEventListener("click", () => openDetail(m.id));
       grid.appendChild(b);
     }
@@ -281,6 +287,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,.drop:focus-visi
     $("#dBody").innerHTML = `
       <button class="close" type="button" data-close aria-label="閉じる">×</button>
       <h2 id="dTitle">${esc(m.title)}</h2>
+      ${dirOf(m) ? `<div class="meta">監督・作者：${esc(dirOf(m))}</div>` : ""}
       ${m.image_path ? `<img class="detail-img" src="${esc(imgSrc(m))}" alt="">` : ""}
       ${m.note ? `<p class="note">${esc(m.note)}</p>` : ""}
       <div class="meta">${m.by_name ? esc(m.by_name) + " が追加" : ""}${names.length ? `　みたい：${names.map(esc).join("、")}` : ""}</div>
@@ -411,7 +418,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,.drop:focus-visi
     try {
       const image_path = state.file ? await uploadImage(state.file) : null;
       const { error } = await state.sb.from("movies").insert({
-        title, year: "", note: $("#fNote").value.trim(), image_path,
+        title, year: $("#fDir").value.trim(), note: $("#fNote").value.trim(), image_path,
         by_name: name, created_by: state.me, votes: { [state.me]: name }, watched: false
       });
       if (error) throw error;
