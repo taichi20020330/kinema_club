@@ -118,6 +118,22 @@ textarea{min-height:70px;resize:vertical}
 .meta{font-size:13px;color:var(--sub)}
 .note{margin:0;white-space:pre-wrap;word-break:break-word}
 
+/* 投稿フォームはスマホ1画面に収める */
+.sheet.compact{gap:10px;padding-top:16px;max-height:100dvh}
+.compact h2{font-size:19px}
+.compact label{gap:4px;font-size:12px}
+.compact input[type=text],.compact textarea{font-weight:400}
+.compact input[type=text]{padding:9px 11px}
+.compact textarea{min-height:0;height:62px;padding:9px 11px}
+.as{font-size:13px;color:var(--sub)}
+.as span{color:var(--ink);font-weight:700}
+.as button{font:inherit;background:none;border:0;color:var(--velvet);text-decoration:underline;text-underline-offset:3px;cursor:pointer;padding:0 0 0 8px}
+.imgrow{display:flex;align-items:center;gap:12px}
+.imgrow .drop{flex:1 1 auto;min-width:0;padding:7px 10px;gap:10px}
+.imgrow .thumb{width:26px}
+.imgrow .link{flex:none}
+.drop p small{color:var(--sub);font-weight:400}
+
 button:focus-visible,input:focus-visible,textarea:focus-visible,.drop:focus-visible,.link:focus-visible{outline:2px solid var(--velvet);outline-offset:2px}
 </style>
 </head>
@@ -147,29 +163,29 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,.drop:focus-visi
 </div>
 
 <div class="sheet-bg" id="postSheet" hidden>
-  <form class="sheet" id="postForm" novalidate>
+  <form class="sheet compact" id="postForm" novalidate>
     <button class="close" type="button" data-close aria-label="閉じる">×</button>
     <h2>上映リクエスト</h2>
-    <label for="fName">あなたの名前
+    <div class="as" id="asRow" hidden><span id="asName"></span> としてリクエスト<button type="button" id="asChange">変更</button></div>
+    <label for="fName" id="nameRow">あなたの名前
       <input type="text" id="fName" maxlength="20" autocomplete="nickname">
     </label>
     <label for="fTitle">タイトル
-      <input type="text" id="fTitle" maxlength="80" placeholder="例：東京物語">
+      <input type="text" id="fTitle" maxlength="80" placeholder="例：東京物語" enterkeyhint="next">
     </label>
-    <label for="fDir">監督・作者 <small>任意</small>
-      <input type="text" id="fDir" maxlength="60">
+    <label for="fDir"><span>監督・作者 <small>任意</small></span>
+      <input type="text" id="fDir" maxlength="60" enterkeyhint="next">
     </label>
-    <label for="fNote">一言 <small>任意</small>
-      <textarea id="fNote" maxlength="300" placeholder="どこがみたいか、どこで観られるか など"></textarea>
+    <label for="fNote"><span>おすすめポイント・なぜみたいか <small>任意</small></span>
+      <textarea id="fNote" maxlength="300" rows="2"></textarea>
     </label>
-    <div style="display:flex;flex-direction:column;gap:6px">
-      <label for="fImg">ポスター画像 <small>任意</small></label>
-      <div class="drop" id="drop" tabindex="0" role="button" aria-label="画像を選ぶ">
+    <div class="imgrow">
+      <div class="drop" id="drop" tabindex="0" role="button" aria-label="ポスター画像を選ぶ">
         <div class="thumb" id="thumb"></div>
-        <p id="dropText">タップして画像を選ぶ（貼り付けもOK）</p>
+        <p id="dropText">ポスター画像 <small>任意</small></p>
       </div>
+      <a class="link" id="findLink" href="#" target="_blank" rel="noopener" aria-disabled="true">画像検索 ↗</a>
       <input type="file" id="fImg" accept="image/*" hidden>
-      <a class="link" id="findLink" href="#" target="_blank" rel="noopener" aria-disabled="true">このタイトルで画像検索 ↗</a>
     </div>
     <p class="err" id="postErr" hidden></p>
     <div class="row"><button class="btn" type="submit" id="postBtn">リクエストする</button></div>
@@ -371,11 +387,18 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,.drop:focus-visi
   // ---- 追加 ----
   function openPost(){
     $("#postForm").reset(); state.file = null; $("#thumb").style.backgroundImage = "";
-    $("#dropText").textContent = "タップして画像を選ぶ（貼り付けもOK）";
+    $("#dropText").innerHTML = "ポスター画像 <small>任意</small>";
     $("#fName").value = state.myName; $("#postErr").hidden = true; updateFind();
+    showNameRow(!state.myName);
     $("#postSheet").hidden = false;
-    setTimeout(() => (state.myName ? $("#fTitle") : $("#fName")).focus(), 30);
+    // スマホではキーボードで画面が隠れないよう、自動でカーソルを置かない
+    if (matchMedia("(pointer:fine)").matches) setTimeout(() => (state.myName ? $("#fTitle") : $("#fName")).focus(), 30);
   }
+  function showNameRow(edit){
+    $("#nameRow").hidden = !edit; $("#asRow").hidden = edit;
+    $("#asName").textContent = state.myName;
+  }
+  $("#asChange").addEventListener("click", () => { showNameRow(true); $("#fName").focus(); });
   function updateFind(){
     const t = $("#fTitle").value.trim(), a = $("#findLink");
     if (t){ a.href = searchUrl(t); a.setAttribute("aria-disabled","false"); } else { a.href = "#"; a.setAttribute("aria-disabled","true"); }
