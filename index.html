@@ -132,6 +132,7 @@ textarea{min-height:70px;resize:vertical}
 .imgrow .drop{flex:1 1 auto;min-width:0;padding:7px 10px;gap:10px}
 .imgrow .thumb{width:26px}
 .imgrow .link{flex:none}
+.paste{flex:none;font:inherit;font-size:13px;background:none;border:1px solid var(--line);border-radius:6px;padding:8px 12px;color:var(--ink);cursor:pointer}
 .drop p small{color:var(--sub);font-weight:400}
 
 button:focus-visible,input:focus-visible,textarea:focus-visible,.drop:focus-visible,.link:focus-visible{outline:2px solid var(--velvet);outline-offset:2px}
@@ -184,6 +185,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,.drop:focus-visi
         <div class="thumb" id="thumb"></div>
         <p id="dropText">ポスター画像 <small>任意</small></p>
       </div>
+      <button type="button" class="paste" id="pasteBtn" hidden>貼り付け</button>
       <a class="link" id="findLink" href="#" target="_blank" rel="noopener" aria-disabled="true">画像検索 ↗</a>
       <input type="file" id="fImg" accept="image/*" hidden>
     </div>
@@ -387,7 +389,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,.drop:focus-visi
   // ---- 追加 ----
   function openPost(){
     $("#postForm").reset(); state.file = null; $("#thumb").style.backgroundImage = "";
-    $("#dropText").innerHTML = "ポスター画像 <small>任意</small>";
+    $("#dropText").innerHTML = desktop ? `ポスター画像 <small>任意・${pasteKey} で貼り付けOK</small>` : "ポスター画像 <small>任意</small>";
     $("#fName").value = state.myName; $("#postErr").hidden = true; updateFind();
     showNameRow(!state.myName);
     $("#postSheet").hidden = false;
@@ -416,11 +418,65 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,.drop:focus-visi
   fImg.addEventListener("change", () => fImg.files[0] && pick(fImg.files[0]));
   drop.addEventListener("dragover", e => e.preventDefault());
   drop.addEventListener("drop", e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) pick(f); });
+  // ---- コピーした画像の貼り付け（パソコン向け） ----
+  const isMac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+  const pasteKey = isMac ? "⌘V" : "Ctrl+V";
+  const desktop = matchMedia("(pointer:fine)").matches;
+  function dataUrlToFile(url){
+    const m = url.match(/^data:(image\/[\w+.-]+);base64,(.*)$/); if (!m) return null;
+    const bin = atob(m[2]); const arr = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+    return new File([arr], "pasted." + (m[1].split("/")[1] || "png"), { type: m[1] });
+  }
+  // クリップボードの中身から画像を取り出す（画像そのもの → HTML内の埋め込み画像の順に探す）
+  function imageFromClipboard(dt){
+    if (!dt) return { file: null, hasImgLink: false };
+    const f1 = [...(dt.files || [])].find(f => f.type.startsWith("image/"));
+    if (f1) return { file: f1 };
+    const it = [...(dt.items || [])].find(i => i.kind === "file" && i.type.startsWith("image/"));
+    const f2 = it && it.getAsFile(); if (f2) return { file: f2 };
+    const html = dt.getData ? dt.getData("text/html") : "";
+    const m = html && html.match(/<img[^>]+src=["'](data:image\/[^"']+)["']/i);
+    if (m){ const f3 = dataUrlToFile(m[1]); if (f3) return { file: f3 }; }
+    return { file: null, hasImgLink: !!(html && /<img[^>]+src=["']https?:/i.test(html)) };
+  }
+  function pasteHint(where){
+    const msg = `画像そのものをコピーしてください（画像を右クリック →「画像をコピー」→ ${pasteKey}）。`;
+    if (where === "post") showPostErr(msg);
+    else { const el = $("#dErr"); if (el){ el.textContent = msg; el.hidden = false; } }
+  }
   document.addEventListener("paste", e => {
-    const item = [...(e.clipboardData?.items || [])].find(i => i.type.startsWith("image/"));
-    if (!item) return; const f = item.getAsFile(); if (!f) return;
-    if (!$("#postSheet").hidden){ e.preventDefault(); pick(f); }
-    else if (!$("#detailSheet").hidden){ e.preventDefault(); attachImage(f); }
+    const postOpen = !$("#postSheet").hidden, detailOpen = !$("#detailSheet").hidden;
+    if (!postOpen && !detailOpen) return;
+    const { file, hasImgLink } = imageFromClipboard(e.clipboardData);
+    if (file){
+      e.preventDefault();
+      if (postOpen) pick(file); else attachImage(file);
+      return;
+    }
+    // 文字入力欄への普通の貼り付けは邪魔しない
+    const tag = (e.target && e.target.tagName) || "";
+    if (hasImgLink && tag !== "INPUT" && tag !== "TEXTAREA") pasteHint(postOpen ? "post" : "detail");
+  });
+  // 「貼り付け」ボタン（パソコンのブラウザで、クリップボードを読める場合だけ表示）
+  const canReadClip = desktop && navigator.clipboard && typeof navigator.clipboard.read === "function";
+  $("#pasteBtn").hidden = !canReadClip;
+  $("#pasteBtn").addEventListener("click", async () => {
+    try {
+      const items = await navigator.clipboard.read();
+      for (const item of items){
+        const type = item.types.find(t => t.startsWith("image/"));
+        if (type){ const blob = await item.getType(type); pick(new File([blob], "pasted." + type.split("/")[1], { type })); return; }
+        if (item.types.includes("text/html")){
+          const html = await (await item.getType("text/html")).text();
+          const m = html.match(/<img[^>]+src=["'](data:image\/[^"']+)["']/i);
+          if (m){ const f = dataUrlToFile(m[1]); if (f){ pick(f); return; } }
+        }
+      }
+      pasteHint("post");
+    } catch(_){
+      showPostErr(`貼り付けを許可されませんでした。${pasteKey} で貼り付けてください。`);
+    }
   });
   function pick(f){
     if (!f.type.startsWith("image/")) { showPostErr("画像ファイルを選んでください。"); return; }
