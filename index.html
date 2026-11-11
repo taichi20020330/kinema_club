@@ -78,8 +78,18 @@ h1 span{display:inline-block}
   padding:6px max(16px,calc(50vw - 360px)) 18px;scroll-padding-inline:max(16px,calc(50vw - 360px));scrollbar-width:none}
 .grid::-webkit-scrollbar{display:none}
 .grid .item{flex:0 0 min(40vw,190px);scroll-snap-align:start}
-.slidebar{display:flex;align-items:center;justify-content:flex-end;gap:10px;margin-top:-6px}
-.slidebar button{font:inherit;font-size:20px;line-height:1;width:40px;height:40px;border-radius:50%;border:1px solid var(--line);background:none;color:var(--ink);cursor:pointer}
+main{display:flex;flex-direction:column;gap:18px}
+.shelf{display:flex;flex-direction:column;gap:4px}
+.shelf-h{display:flex;justify-content:space-between;align-items:center;gap:12px;min-height:40px}
+.shelf-h h2{font-family:var(--f-sign);font-weight:400;font-size:17px;letter-spacing:.12em;margin:0}
+.grid.small .item{flex-basis:min(28vw,130px)}
+.grid.small .t{font-size:13px}
+.grid.small .dir{font-size:12px}
+.grid.small .pic{border-width:2px;padding:3px}
+.grid.small .pic .noimg{inset:3px;font-size:13px;padding:8px}
+.grid.small .item.watched .pic::after{font-size:12px;padding:0 5px;border-width:1px}
+.slidebar{display:flex;align-items:center;gap:8px}
+.slidebar button{font:inherit;font-size:18px;line-height:1;width:34px;height:34px;border-radius:50%;border:1px solid var(--line);background:none;color:var(--ink);cursor:pointer}
 .slidebar button:disabled{opacity:.3;cursor:default}
 @media (pointer:coarse){.slidebar{display:none}}
 .item{display:flex;flex-direction:column;gap:8px;min-width:0;background:none;border:0;padding:0;color:inherit;text-align:left;cursor:pointer;font:inherit}
@@ -157,17 +167,21 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,.drop:focus-visi
   <button class="ticket" id="openPost" type="button">上映リクエスト</button>
   <div class="who" id="who"></div>
 
-  <nav class="tabs" aria-label="表示">
-    <button class="tab on" data-f="all" type="button">すべて</button>
-    <button class="tab" data-f="want" type="button">まだ観てない</button>
+  <nav class="tabs" aria-label="並び順">
+    <button class="tab on" data-f="all" type="button">新しい順</button>
     <button class="tab" data-f="top" type="button">人気順</button>
-    <button class="tab" data-f="done" type="button">観た</button>
   </nav>
 
   <main aria-live="polite">
-    <div class="grid" id="grid" aria-label="リクエスト一覧（横にスワイプ）"></div>
-    <div class="slidebar" id="slidebar" hidden><button type="button" id="prev" aria-label="前へ">‹</button><button type="button" id="next" aria-label="次へ">›</button></div>
-    <p class="empty" id="empty">まだ何もありません。「上映リクエスト」から観たい映画を入れてください。</p>
+    <section class="shelf">
+      <div class="shelf-h"><h2>上映予定</h2><div class="slidebar" data-for="grid"><button type="button" class="prev" aria-label="前へ">‹</button><button type="button" class="next" aria-label="次へ">›</button></div></div>
+      <div class="grid" id="grid" aria-label="上映予定（横にスワイプ）"></div>
+      <p class="empty" id="empty">まだ何もありません。「上映リクエスト」から観たい映画を入れてください。</p>
+    </section>
+    <section class="shelf" id="doneShelf" hidden>
+      <div class="shelf-h"><h2>上映終了</h2><div class="slidebar" data-for="gridDone"><button type="button" class="prev" aria-label="前へ">‹</button><button type="button" class="next" aria-label="次へ">›</button></div></div>
+      <div class="grid small" id="gridDone" aria-label="上映終了（横にスワイプ）"></div>
+    </section>
   </main>
   <p class="notice" id="notice" hidden></p>
 </div>
@@ -267,67 +281,61 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,.drop:focus-visi
   });
 
   // ---- 一覧 ----
-  function visible(){
-    let list = state.movies.slice();
-    if (state.filter === "want") list = list.filter(m => !m.watched);
-    if (state.filter === "done") list = list.filter(m => m.watched);
-    if (state.filter === "top") list.sort((a,b) => voteCount(b) - voteCount(a) || ts(b) - ts(a));
-    else list.sort((a,b) => ts(b) - ts(a));
-    // まだ観てない作品を先に、観た作品は後ろへ
-    list.sort((a,b) => (a.watched ? 1 : 0) - (b.watched ? 1 : 0));
-    return list;
+  function sorted(list){
+    if (state.filter === "top") return list.sort((a,b) => voteCount(b) - voteCount(a) || ts(b) - ts(a));
+    return list.sort((a,b) => ts(b) - ts(a));
+  }
+  function makeItem(m){
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "item" + (m.watched ? " watched" : "");
+    const n = voteCount(m);
+    const pic = document.createElement("div"); pic.className = "pic";
+    const noimg = () => { const d = document.createElement("div"); d.className = "noimg"; d.textContent = m.title; return d; };
+    if (m.image_path){
+      const img = document.createElement("img"); img.alt = ""; img.loading = "lazy"; img.src = imgSrc(m);
+      img.onerror = () => { img.remove(); pic.appendChild(noimg()); };
+      pic.appendChild(img);
+    } else pic.appendChild(noimg());
+    const t = document.createElement("div"); t.className = "t"; t.textContent = m.title;
+    const dir = document.createElement("div"); dir.className = "dir"; dir.textContent = dirOf(m); dir.hidden = !dirOf(m);
+    const by = document.createElement("div"); by.className = "by";
+    by.textContent = [m.by_name, n ? `みたい ${n}` : ""].filter(Boolean).join("・");
+    b.append(pic, t, dir, by);
+    b.addEventListener("click", () => openDetail(m.id));
+    return b;
   }
   function render(){
-    const grid = $("#grid"), list = visible();
-    const want = state.movies.filter(m => !m.watched).length;
-    $("#count").textContent = state.movies.length ? `${state.movies.length}本・まだ観てない ${want}本` : "0本";
-    grid.innerHTML = "";
-    $("#empty").hidden = list.length > 0;
-    if (!list.length && state.movies.length) $("#empty").textContent = "この条件の映画はありません。";
-    for (const m of list){
-      const b = document.createElement("button");
-      b.type = "button"; b.className = "item" + (m.watched ? " watched" : "");
-      const n = voteCount(m);
-      const pic = document.createElement("div"); pic.className = "pic";
-      const noimg = () => { const d = document.createElement("div"); d.className = "noimg"; d.textContent = m.title; return d; };
-      if (m.image_path){
-        const img = document.createElement("img"); img.alt = ""; img.loading = "lazy"; img.src = imgSrc(m);
-        img.onerror = () => { img.remove(); pic.appendChild(noimg()); };
-        pic.appendChild(img);
-      } else pic.appendChild(noimg());
-      const t = document.createElement("div"); t.className = "t"; t.textContent = m.title;
-      const dir = document.createElement("div"); dir.className = "dir"; dir.textContent = dirOf(m); dir.hidden = !dirOf(m);
-      const by = document.createElement("div"); by.className = "by";
-      by.textContent = [m.by_name, n ? `みたい ${n}` : "", m.watched ? "観た" : ""].filter(Boolean).join("・");
-      b.append(pic, t, dir, by);
-      b.addEventListener("click", () => openDetail(m.id));
-      grid.appendChild(b);
-    }
-    $("#slidebar").hidden = list.length < 2;
-    if (state.filterChanged){ grid.scrollLeft = 0; state.filterChanged = false; }
-    updateSlide();
+    const want = sorted(state.movies.filter(m => !m.watched));
+    const done = sorted(state.movies.filter(m => m.watched));
+    $("#count").textContent = state.movies.length ? `${state.movies.length}本・まだ観てない ${want.length}本` : "0本";
+    const grid = $("#grid"), gridDone = $("#gridDone");
+    grid.innerHTML = ""; gridDone.innerHTML = "";
+    want.forEach(m => grid.appendChild(makeItem(m)));
+    done.forEach(m => gridDone.appendChild(makeItem(m)));
+    $("#empty").hidden = want.length > 0;
+    if (!want.length && state.movies.length) $("#empty").textContent = "上映予定の映画はありません。「上映リクエスト」から追加してください。";
+    $("#doneShelf").hidden = done.length === 0;
+    if (state.filterChanged){ grid.scrollLeft = 0; gridDone.scrollLeft = 0; state.filterChanged = false; }
+    updateSlides();
     if (state.openId) renderDetail();
   }
 
-  // ---- 横スライド ----
-  function updateSlide(){
-    const g = $("#grid");
-    $("#prev").disabled = g.scrollLeft <= 2;
-    $("#next").disabled = g.scrollLeft + g.clientWidth >= g.scrollWidth - 2;
+  // ---- 横スライド（パソコンは ‹ › ボタンで送れる） ----
+  const bars = [...document.querySelectorAll(".slidebar")].map(bar => ({ bar, g: document.getElementById(bar.dataset.for) }));
+  function updateSlides(){
+    for (const { bar, g } of bars){
+      bar.hidden = g.scrollWidth <= g.clientWidth + 2;
+      bar.querySelector(".prev").disabled = g.scrollLeft <= 2;
+      bar.querySelector(".next").disabled = g.scrollLeft + g.clientWidth >= g.scrollWidth - 2;
+    }
   }
-  const page = dir => { const g = $("#grid"); g.scrollBy({ left: dir * g.clientWidth * 0.8, behavior: "smooth" }); };
-  let slideRaf = 0;
-  $("#grid").addEventListener("scroll", () => { cancelAnimationFrame(slideRaf); slideRaf = requestAnimationFrame(updateSlide); }, { passive: true });
-  $("#prev").addEventListener("click", () => page(-1));
-  $("#next").addEventListener("click", () => page(1));
-  document.addEventListener("keydown", e => {
-    if (document.querySelector(".sheet-bg:not([hidden])")) return;
-    const tag = (e.target && e.target.tagName) || "";
-    if (tag === "INPUT" || tag === "TEXTAREA") return;
-    if (e.key === "ArrowRight"){ e.preventDefault(); page(1); }
-    if (e.key === "ArrowLeft"){ e.preventDefault(); page(-1); }
-  });
-  window.addEventListener("resize", updateSlide);
+  for (const { bar, g } of bars){
+    let raf = 0;
+    g.addEventListener("scroll", () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(updateSlides); }, { passive: true });
+    bar.querySelector(".prev").addEventListener("click", () => g.scrollBy({ left: -g.clientWidth * 0.8, behavior: "smooth" }));
+    bar.querySelector(".next").addEventListener("click", () => g.scrollBy({ left: g.clientWidth * 0.8, behavior: "smooth" }));
+  }
+  window.addEventListener("resize", updateSlides);
 
   // ---- 詳細 ----
   function openDetail(id){ state.openId = id; $("#detailSheet").hidden = false; renderDetail(); }
