@@ -273,6 +273,8 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,.drop:focus-visi
     if (state.filter === "done") list = list.filter(m => m.watched);
     if (state.filter === "top") list.sort((a,b) => voteCount(b) - voteCount(a) || ts(b) - ts(a));
     else list.sort((a,b) => ts(b) - ts(a));
+    // まだ観てない作品を先に、観た作品は後ろへ
+    list.sort((a,b) => (a.watched ? 1 : 0) - (b.watched ? 1 : 0));
     return list;
   }
   function render(){
