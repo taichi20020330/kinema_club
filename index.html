@@ -72,16 +72,16 @@ h1 span{display:inline-block}
 .tab.on{color:var(--velvet);border-bottom-color:var(--velvet);font-weight:700}
 
 /* 真鍮枠のポスターケース */
-/* 横一列に並べてスワイプで見る */
-.grid{display:flex;gap:18px;overflow-x:auto;overscroll-behavior-x:contain;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;
+/* 横一列にずらっと並べる（左端から始まり、スワイプで流す） */
+.grid{display:flex;gap:14px;overflow-x:auto;overscroll-behavior-x:contain;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;
   width:100vw;margin-left:calc(50% - 50vw);
-  padding:6px max(16px,calc(50vw - 130px)) 18px;scroll-padding-inline:max(16px,calc(50vw - 130px));scrollbar-width:none}
+  padding:6px max(16px,calc(50vw - 360px)) 18px;scroll-padding-inline:max(16px,calc(50vw - 360px));scrollbar-width:none}
 .grid::-webkit-scrollbar{display:none}
-.grid .item{flex:0 0 min(66vw,260px);scroll-snap-align:center;scroll-snap-stop:always}
-.slidebar{display:flex;align-items:center;justify-content:center;gap:18px;margin-top:-6px}
+.grid .item{flex:0 0 min(40vw,190px);scroll-snap-align:start}
+.slidebar{display:flex;align-items:center;justify-content:flex-end;gap:10px;margin-top:-6px}
 .slidebar button{font:inherit;font-size:20px;line-height:1;width:40px;height:40px;border-radius:50%;border:1px solid var(--line);background:none;color:var(--ink);cursor:pointer}
 .slidebar button:disabled{opacity:.3;cursor:default}
-.slidebar span{font-family:var(--f-sign);font-size:14px;color:var(--sub);min-width:64px;text-align:center;font-variant-numeric:tabular-nums}
+@media (pointer:coarse){.slidebar{display:none}}
 .item{display:flex;flex-direction:column;gap:8px;min-width:0;background:none;border:0;padding:0;color:inherit;text-align:left;cursor:pointer;font:inherit}
 .pic{position:relative;aspect-ratio:2/3;background:var(--ink);border:3px solid var(--brass);border-radius:3px;padding:5px;
   box-shadow:0 0 0 1px #7a5a22,0 8px 14px rgba(60,35,10,.22)}
@@ -166,7 +166,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,.drop:focus-visi
 
   <main aria-live="polite">
     <div class="grid" id="grid" aria-label="リクエスト一覧（横にスワイプ）"></div>
-    <div class="slidebar" id="slidebar" hidden><button type="button" id="prev" aria-label="前へ">‹</button><span id="pos"></span><button type="button" id="next" aria-label="次へ">›</button></div>
+    <div class="slidebar" id="slidebar" hidden><button type="button" id="prev" aria-label="前へ">‹</button><button type="button" id="next" aria-label="次へ">›</button></div>
     <p class="empty" id="empty">まだ何もありません。「上映リクエスト」から観たい映画を入れてください。</p>
   </main>
   <p class="notice" id="notice" hidden></p>
@@ -308,32 +308,22 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,.drop:focus-visi
   }
 
   // ---- 横スライド ----
-  function currentIndex(){
-    const g = $("#grid"), mid = g.scrollLeft + g.clientWidth / 2;
-    let best = 0, bestD = Infinity;
-    [...g.children].forEach((c, i) => { const d = Math.abs(c.offsetLeft + c.offsetWidth / 2 - mid); if (d < bestD){ bestD = d; best = i; } });
-    return best;
-  }
   function updateSlide(){
-    const n = $("#grid").children.length; if (!n) return;
-    const i = currentIndex();
-    $("#pos").textContent = `${i + 1} / ${n}`;
-    $("#prev").disabled = i === 0; $("#next").disabled = i === n - 1;
+    const g = $("#grid");
+    $("#prev").disabled = g.scrollLeft <= 2;
+    $("#next").disabled = g.scrollLeft + g.clientWidth >= g.scrollWidth - 2;
   }
-  function goTo(i){
-    const g = $("#grid"), c = g.children[i]; if (!c) return;
-    g.scrollTo({ left: c.offsetLeft + c.offsetWidth / 2 - g.clientWidth / 2, behavior: "smooth" });
-  }
+  const page = dir => { const g = $("#grid"); g.scrollBy({ left: dir * g.clientWidth * 0.8, behavior: "smooth" }); };
   let slideRaf = 0;
   $("#grid").addEventListener("scroll", () => { cancelAnimationFrame(slideRaf); slideRaf = requestAnimationFrame(updateSlide); }, { passive: true });
-  $("#prev").addEventListener("click", () => goTo(currentIndex() - 1));
-  $("#next").addEventListener("click", () => goTo(currentIndex() + 1));
+  $("#prev").addEventListener("click", () => page(-1));
+  $("#next").addEventListener("click", () => page(1));
   document.addEventListener("keydown", e => {
     if (document.querySelector(".sheet-bg:not([hidden])")) return;
     const tag = (e.target && e.target.tagName) || "";
     if (tag === "INPUT" || tag === "TEXTAREA") return;
-    if (e.key === "ArrowRight"){ e.preventDefault(); goTo(currentIndex() + 1); }
-    if (e.key === "ArrowLeft"){ e.preventDefault(); goTo(currentIndex() - 1); }
+    if (e.key === "ArrowRight"){ e.preventDefault(); page(1); }
+    if (e.key === "ArrowLeft"){ e.preventDefault(); page(-1); }
   });
   window.addEventListener("resize", updateSlide);
 
