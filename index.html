@@ -150,6 +150,9 @@ textarea{min-height:70px;resize:vertical}
 .imgrow .drop{flex:1 1 auto;min-width:0;padding:7px 10px;gap:10px}
 .imgrow .thumb{width:26px}
 .imgrow .link{flex:none}
+#pasteSlot:empty{display:none}
+.pastezone{white-space:nowrap;outline:none;caret-color:transparent;-webkit-user-select:text;user-select:text;background:#fffaf0}
+.pastezone:focus{border-color:var(--velvet)}
 .paste{flex:none;font:inherit;font-size:13px;background:none;border:1px solid var(--line);border-radius:6px;padding:8px 12px;color:var(--ink);cursor:pointer}
 .drop p small{color:var(--sub);font-weight:400}
 
@@ -237,7 +240,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,.drop:focus-visi
         <div class="thumb" id="thumb"></div>
         <p id="dropText">ポスター画像 <small>任意</small></p>
       </div>
-      <button type="button" class="paste" id="pasteBtn" hidden>貼り付け</button>
+      <span id="pasteSlot"></span>
       <a class="link" id="findLink" href="#" target="_blank" rel="noopener" aria-disabled="true">画像検索 ↗</a>
       <input type="file" id="fImg" accept="image/*" hidden>
     </div>
@@ -455,7 +458,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,.drop:focus-visi
         <button class="sub-btn" type="button" id="dWatched">${m.watched ? "観た ✓" : "観た"}</button>
       </div>
       <div class="row">
-        <button class="sub-btn" type="button" id="dAddImg">${m.image_path ? "画像を変える" : "画像を追加"}</button>
+        <button class="sub-btn" type="button" id="dAddImg">${m.image_path ? "画像を変える" : "画像を追加"}</button>${pasteControl()}
         <a class="link" href="${esc(searchUrl(m.title))}" target="_blank" rel="noopener">画像検索 ↗</a>
         ${m.created_by === state.me ? `<button class="sub-btn danger" type="button" id="dDel">削除</button>` : ""}
       </div>
@@ -470,6 +473,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,.drop:focus-visi
     $("#dBody").scrollTop = keepScroll;
     state.rvFor = m.id;
     $("#dBody").querySelector("[data-close]").onclick = closeSheets;
+    wirePaste($("#dBody"), f => attachImage(f), "detail");
     const rvErr = msg => { const e = $("#rvErr"); e.textContent = msg; e.hidden = false; };
     const rvForm = $("#rvForm");
     if (rvForm) rvForm.addEventListener("submit", e => {
@@ -628,26 +632,53 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,.drop:focus-visi
     const tag = (e.target && e.target.tagName) || "";
     if (hasImgLink && tag !== "INPUT" && tag !== "TEXTAREA") pasteHint(postOpen ? "post" : "detail");
   });
-  // 「貼り付け」ボタン（パソコンのブラウザで、クリップボードを読める場合だけ表示）
-  const canReadClip = desktop && navigator.clipboard && typeof navigator.clipboard.read === "function";
-  $("#pasteBtn").hidden = !canReadClip;
-  $("#pasteBtn").addEventListener("click", async () => {
-    try {
-      const items = await navigator.clipboard.read();
-      for (const item of items){
-        const type = item.types.find(t => t.startsWith("image/"));
-        if (type){ const blob = await item.getType(type); pick(new File([blob], "pasted." + type.split("/")[1], { type })); return; }
-        if (item.types.includes("text/html")){
-          const html = await (await item.getType("text/html")).text();
-          const m = html.match(/<img[^>]+src=["'](data:image\/[^"']+)["']/i);
-          if (m){ const f = dataUrlToFile(m[1]); if (f){ pick(f); return; } }
-        }
+  // ---- 「貼り付け」ボタン（パソコン・スマホ共通） ----
+  // クリップボードを読めるブラウザはボタンを押すだけ。読めないスマホは「長押し →ペースト」で貼る
+  const canReadClip = true && !!(navigator.clipboard && typeof navigator.clipboard.read === "function");
+  const touch = matchMedia("(pointer:coarse)").matches;
+  const ZONE = `<div class="paste pastezone" contenteditable="true" inputmode="none" role="textbox" aria-label="長押しして画像を貼り付け" data-pastezone>長押しで貼り付け</div>`;
+  function pasteControl(){
+    if (canReadClip) return `<button type="button" class="paste" data-paste>貼り付け</button>`;
+    return touch ? ZONE : "";
+  }
+  function msg(where, text){
+    if (where === "post") showPostErr(text);
+    else { const el = $("#dErr"); if (el){ el.textContent = text; el.hidden = false; } }
+  }
+  async function readClipImage(){
+    const items = await navigator.clipboard.read();
+    for (const item of items){
+      const type = item.types.find(t => t.startsWith("image/"));
+      if (type){ const blob = await item.getType(type); return new File([blob], "pasted." + type.split("/")[1], { type }); }
+      if (item.types.includes("text/html")){
+        const html = await (await item.getType("text/html")).text();
+        const m = html.match(/<img[^>]+src=["'](data:image\/[^"']+)["']/i);
+        if (m){ const f = dataUrlToFile(m[1]); if (f) return f; }
       }
-      pasteHint("post");
-    } catch(_){
-      showPostErr(`貼り付けを許可されませんでした。${pasteKey} で貼り付けてください。`);
     }
-  });
+    return null;
+  }
+  function wirePaste(root, onFile, where){
+    root.querySelectorAll("[data-paste]").forEach(b => b.addEventListener("click", async () => {
+      try { const f = await readClipImage(); if (f) onFile(f); else pasteHint(where); }
+      catch(_){
+        if (touch){
+          // 読み取りを断られたら長押し方式に切り替える
+          b.outerHTML = ZONE; wirePaste(root, onFile, where);
+          msg(where, "「長押しで貼り付け」を長押しして「ペースト」を選んでください。");
+        } else msg(where, `貼り付けを許可されませんでした。${pasteKey} で貼り付けてください。`);
+      }
+    }));
+    root.querySelectorAll("[data-pastezone]").forEach(z => {
+      if (z.dataset.wired) return; z.dataset.wired = "1";
+      const reset = () => { if (z.textContent !== "長押しで貼り付け") z.textContent = "長押しで貼り付け"; };
+      z.addEventListener("beforeinput", e => { if (e.inputType !== "insertFromPaste") e.preventDefault(); });
+      z.addEventListener("input", reset);
+      z.addEventListener("paste", () => setTimeout(() => { reset(); z.blur(); }, 0));
+    });
+  }
+  $("#pasteSlot").innerHTML = pasteControl();
+  wirePaste($("#postForm"), f => pick(f), "post");
   function pick(f){
     if (!f.type.startsWith("image/")) { showPostErr("画像ファイルを選んでください。"); return; }
     state.file = f;
